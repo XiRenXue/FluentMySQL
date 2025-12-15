@@ -1,4 +1,4 @@
-﻿#include "database.h"
+#include "database.h"
 #include <regex>
 #include <algorithm>
 #include <cctype>
@@ -621,9 +621,11 @@ auto MySQLWrapper::ExecuteInternal(const std::string& SqlQuery, bool IsQuery) ->
     try
     {
         const std::unique_ptr<sql::Statement> Statement(ActiveConnection->createStatement());
-        if (IsQuery)
+        const bool HasResultSet = Statement->execute(SqlQuery);
+        
+        if (HasResultSet)
         {
-            const std::unique_ptr<sql::ResultSet> ResultSet(Statement->executeQuery(SqlQuery));
+            const std::unique_ptr<sql::ResultSet> ResultSet(Statement->getResultSet());
             sql::ResultSetMetaData* MetaData = ResultSet->getMetaData();
             const int ColumnCount = MetaData->getColumnCount();
             for (int Index = 1; Index <= ColumnCount; ++Index)
@@ -647,21 +649,19 @@ auto MySQLWrapper::ExecuteInternal(const std::string& SqlQuery, bool IsQuery) ->
             ResultData.AffectedRows = ResultData.Rows.size();
         }
         else
-        {
-            const bool HasResult = Statement->execute(SqlQuery);
-            if (!HasResult)
-                ResultData.AffectedRows = Statement->getUpdateCount();
-        }
+            ResultData.AffectedRows = Statement->getUpdateCount();
         ResultData.Success = true;
         UpdateStatistics(true);
         LastErrorMessage.clear();
     }
     catch (const sql::SQLException& Exception)
     {
-        ResultData.ErrorMessage = std::format("{} 错误: {} (代码: {}, 状态: {})", IsQuery ? "查询" : "执行", Exception.what(), Exception.getErrorCode(), Exception.getSQLState());
+        ResultData.ErrorMessage = std::format("执行错误: {} (代码: {}, 状态: {})", 
+            Exception.what(), Exception.getErrorCode(), Exception.getSQLState());
         UpdateStatistics(false);
         LogError(ResultData.ErrorMessage);
     }
+    
     const auto EndTime = std::chrono::steady_clock::now();
     ResultData.ExecutionTime = std::chrono::duration_cast<std::chrono::milliseconds>(EndTime - StartTime);
     return ResultData;

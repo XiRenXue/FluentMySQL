@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "def.h"
 #include <Windows.h>
 #include <Richedit.h>
@@ -517,6 +517,11 @@ inline auto LayoutUIControls(HWND WindowHandle) noexcept -> void
 struct ConnectionDialogData
 {
     std::function<void(const char*, const char*, const char*, const char*, int)> OnConnect;
+    std::string InitialHost = "localhost";
+    std::string InitialUser = "root";
+    std::string InitialPassword;
+    std::string InitialDatabase;
+    int InitialPort = 3306;
 };
 
 inline LRESULT CALLBACK ConnectionDialogWndProc(HWND DialogHandle, UINT Message, WPARAM WParam, LPARAM LParam)
@@ -537,16 +542,21 @@ inline LRESULT CALLBACK ConnectionDialogWndProc(HWND DialogHandle, UINT Message,
         const int InputHeight = ScaleForDPI(25, DPI);
         const int ButtonWidth = ScaleForDPI(120, DPI);
         const int ButtonHeight = ScaleForDPI(35, DPI);
+        const std::wstring InitialHost = Utf8ToWide(DialogData ? DialogData->InitialHost : "localhost");
+        const std::wstring InitialUser = Utf8ToWide(DialogData ? DialogData->InitialUser : "root");
+        const std::wstring InitialPassword = Utf8ToWide(DialogData ? DialogData->InitialPassword : "");
+        const std::wstring InitialDatabase = Utf8ToWide(DialogData ? DialogData->InitialDatabase : "");
+        const std::wstring InitialPort = std::to_wstring(DialogData ? DialogData->InitialPort : 3306);
         CreateWindowExW(WS_EX_TRANSPARENT, L"STATIC", L"主机地址:", WS_CHILD | WS_VISIBLE, ScaleForDPI(20, DPI), StartY, LabelWidth, LabelHeight, DialogHandle, nullptr, nullptr, nullptr);
-        UIHandles::HostEdit = CreateWindowExW(WS_EX_CLIENTEDGE, MSFTEDIT_CLASS, L"localhost", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, ScaleForDPI(130, DPI), StartY, InputWidth, InputHeight, DialogHandle, nullptr, nullptr, nullptr);
+        UIHandles::HostEdit = CreateWindowExW(WS_EX_CLIENTEDGE, MSFTEDIT_CLASS, InitialHost.c_str(), WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, ScaleForDPI(130, DPI), StartY, InputWidth, InputHeight, DialogHandle, nullptr, nullptr, nullptr);
         CreateWindowExW(WS_EX_TRANSPARENT, L"STATIC", L"端口:", WS_CHILD | WS_VISIBLE, ScaleForDPI(20, DPI), StartY + Spacing, LabelWidth, LabelHeight, DialogHandle, nullptr, nullptr, nullptr);
-        UIHandles::PortEdit = CreateWindowExW(WS_EX_CLIENTEDGE, MSFTEDIT_CLASS, L"3306", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_NUMBER, ScaleForDPI(130, DPI), StartY + Spacing, InputWidth, InputHeight, DialogHandle, nullptr, nullptr, nullptr);
+        UIHandles::PortEdit = CreateWindowExW(WS_EX_CLIENTEDGE, MSFTEDIT_CLASS, InitialPort.c_str(), WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_NUMBER, ScaleForDPI(130, DPI), StartY + Spacing, InputWidth, InputHeight, DialogHandle, nullptr, nullptr, nullptr);
         CreateWindowExW(WS_EX_TRANSPARENT, L"STATIC", L"用户名:", WS_CHILD | WS_VISIBLE, ScaleForDPI(20, DPI), StartY + Spacing * 2, LabelWidth, LabelHeight, DialogHandle, nullptr, nullptr, nullptr);
-        UIHandles::UserEdit = CreateWindowExW( WS_EX_CLIENTEDGE, MSFTEDIT_CLASS, L"root", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, ScaleForDPI(130, DPI), StartY + Spacing * 2, InputWidth, InputHeight, DialogHandle, nullptr, nullptr, nullptr);
+        UIHandles::UserEdit = CreateWindowExW(WS_EX_CLIENTEDGE, MSFTEDIT_CLASS, InitialUser.c_str(), WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, ScaleForDPI(130, DPI), StartY + Spacing * 2, InputWidth, InputHeight, DialogHandle, nullptr, nullptr, nullptr);
         CreateWindowExW(WS_EX_TRANSPARENT, L"STATIC", L"密码:", WS_CHILD | WS_VISIBLE, ScaleForDPI(20, DPI), StartY + Spacing * 3, LabelWidth, LabelHeight, DialogHandle, nullptr, nullptr, nullptr);
-        UIHandles::PasswordEdit = CreateWindowExW(WS_EX_CLIENTEDGE, MSFTEDIT_CLASS, L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_PASSWORD, ScaleForDPI(130, DPI), StartY + Spacing * 3, InputWidth, InputHeight, DialogHandle, nullptr, nullptr, nullptr);
+        UIHandles::PasswordEdit = CreateWindowExW(WS_EX_CLIENTEDGE, MSFTEDIT_CLASS, InitialPassword.c_str(), WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_PASSWORD, ScaleForDPI(130, DPI), StartY + Spacing * 3, InputWidth, InputHeight, DialogHandle, nullptr, nullptr, nullptr);
         CreateWindowExW(WS_EX_TRANSPARENT, L"STATIC", L"数据库(可选):", WS_CHILD | WS_VISIBLE, ScaleForDPI(20, DPI), StartY + Spacing * 4, LabelWidth, LabelHeight, DialogHandle, nullptr, nullptr, nullptr);
-        UIHandles::DatabaseEdit = CreateWindowExW(WS_EX_CLIENTEDGE, MSFTEDIT_CLASS, L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, ScaleForDPI(130, DPI), StartY + Spacing * 4, InputWidth, InputHeight, DialogHandle, nullptr, nullptr, nullptr);
+        UIHandles::DatabaseEdit = CreateWindowExW(WS_EX_CLIENTEDGE, MSFTEDIT_CLASS, InitialDatabase.c_str(), WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, ScaleForDPI(130, DPI), StartY + Spacing * 4, InputWidth, InputHeight, DialogHandle, nullptr, nullptr, nullptr);
         CreateWindowExW(0, L"BUTTON", L"连接", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, ScaleForDPI(80, DPI), StartY + Spacing * 5 + ScaleForDPI(10, DPI), ButtonWidth, ButtonHeight, DialogHandle, reinterpret_cast<HMENU>(IDOK), nullptr, nullptr);
         CreateWindowExW(0, L"BUTTON", L"取消", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, ScaleForDPI(220, DPI), StartY + Spacing * 5 + ScaleForDPI(10, DPI), ButtonWidth, ButtonHeight, DialogHandle, reinterpret_cast<HMENU>(IDCANCEL), nullptr, nullptr);
         HFONT DialogFont = CreateScaledFont(DPI);
@@ -554,7 +564,6 @@ inline LRESULT CALLBACK ConnectionDialogWndProc(HWND DialogHandle, UINT Message,
             {
                 wchar_t ClassName[256] = {};
                 GetClassNameW(Child, ClassName, _countof(ClassName));
-
                 if (wcscmp(ClassName, MSFTEDIT_CLASS) == 0)
                     SetRichEditFont(Child, reinterpret_cast<HFONT>(LParam));
                 else
@@ -635,7 +644,7 @@ inline LRESULT CALLBACK ConnectionDialogWndProc(HWND DialogHandle, UINT Message,
     return DefWindowProcW(DialogHandle, Message, WParam, LParam);
 }
 
-inline auto ShowConnectionDialog(HWND ParentWindow, std::function<void(const char*, const char*, const char*, const char*, int)> OnConnect) -> void
+inline auto ShowConnectionDialog(HWND ParentWindow, std::function<void(const char*, const char*, const char*, const char*, int)> OnConnect, const char* InitialHost = "localhost", const char* InitialUser = "root",  const char* InitialPassword = "", const char* InitialDatabase = "", int InitialPort = 3306) -> void
 {
     if (UIHandles::ConnectionDialog && IsWindow(UIHandles::ConnectionDialog))
     {
@@ -658,6 +667,11 @@ inline auto ShowConnectionDialog(HWND ParentWindow, std::function<void(const cha
     }
     static ConnectionDialogData DialogData;
     DialogData.OnConnect = OnConnect;
+    DialogData.InitialHost = InitialHost ? InitialHost : "localhost";
+    DialogData.InitialUser = InitialUser ? InitialUser : "root";
+    DialogData.InitialPassword = InitialPassword ? InitialPassword : "";
+    DialogData.InitialDatabase = InitialDatabase ? InitialDatabase : "";
+    DialogData.InitialPort = InitialPort;
     const int DPI = GetWindowDPI(ParentWindow);
     const int DialogWidth = ScaleForDPI(420, DPI);
     const int DialogHeight = ScaleForDPI(350, DPI);

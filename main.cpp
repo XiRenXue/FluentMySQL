@@ -1,4 +1,4 @@
-﻿#include "render.hpp"
+#include "render.hpp"
 #include "def.h"
 #include "database.h"
 #include <sstream>
@@ -109,6 +109,96 @@ auto UpdateStatusDisplay() -> void
     }
 }
 
+[[nodiscard]] auto SplitSQLStatements(std::string_view SqlText) -> std::vector<std::string>
+{
+    std::vector<std::string> Statements;
+    std::string CurrentStatement;
+    bool InSingleQuote = false;
+    bool InDoubleQuote = false;
+    bool InComment = false;
+    
+    for (std::size_t Index = 0; Index < SqlText.length(); ++Index)
+    {
+        const char CurrentChar = SqlText[Index];
+        const char NextChar = (Index + 1 < SqlText.length()) ? SqlText[Index + 1] : '\0';
+        if (!InSingleQuote && !InDoubleQuote)
+        {
+            if (CurrentChar == '-' && NextChar == '-')
+            {
+                while (Index < SqlText.length() && SqlText[Index] != '\n')
+                    ++Index;
+                continue;
+            }
+            if (CurrentChar == '#')
+            {
+                while (Index < SqlText.length() && SqlText[Index] != '\n')
+                    ++Index;
+                continue;
+            }
+            if (CurrentChar == '/' && NextChar == '*')
+            {
+                ++Index;
+                ++Index;
+                while (Index + 1 < SqlText.length())
+                {
+                    if (SqlText[Index] == '*' && SqlText[Index + 1] == '/')
+                    {
+                        ++Index;
+                        ++Index;
+                        break;
+                    }
+                    ++Index;
+                }
+                continue;
+            }
+        }
+        if (CurrentChar == '\'' && !InDoubleQuote)
+        {
+            if (Index > 0 && SqlText[Index - 1] == '\\')
+            {
+                CurrentStatement += CurrentChar;
+                continue;
+            }
+            InSingleQuote = !InSingleQuote;
+            CurrentStatement += CurrentChar;
+            continue;
+        }
+        
+        if (CurrentChar == '"' && !InSingleQuote)
+        {
+            if (Index > 0 && SqlText[Index - 1] == '\\')
+            {
+                CurrentStatement += CurrentChar;
+                continue;
+            }
+            InDoubleQuote = !InDoubleQuote;
+            CurrentStatement += CurrentChar;
+            continue;
+        }
+        if (CurrentChar == ';' && !InSingleQuote && !InDoubleQuote)
+        {
+            CurrentStatement += CurrentChar;
+            auto TrimmedStatement = CurrentStatement;
+            TrimmedStatement.erase(0, TrimmedStatement.find_first_not_of(" \t\n\r"));
+            TrimmedStatement.erase(TrimmedStatement.find_last_not_of(" \t\n\r") + 1);
+            if (!TrimmedStatement.empty())
+                Statements.push_back(TrimmedStatement);
+            CurrentStatement.clear();
+            continue;
+        }
+        CurrentStatement += CurrentChar;
+    }
+    if (!CurrentStatement.empty())
+    {
+        auto TrimmedStatement = CurrentStatement;
+        TrimmedStatement.erase(0, TrimmedStatement.find_first_not_of(" \t\n\r"));
+        TrimmedStatement.erase(TrimmedStatement.find_last_not_of(" \t\n\r") + 1);
+        if (!TrimmedStatement.empty())
+            Statements.push_back(TrimmedStatement);
+    }
+    return Statements;
+}
+
 auto ExecuteSQL() -> void
 {
     const std::string InputSQL = GetEditText(UIHandles::InputEdit);
@@ -124,9 +214,27 @@ auto ExecuteSQL() -> void
         AppendEditTextWithTimestamp(UIHandles::OutputEdit, OutputMessage);
         return;
     }
-    const MySQLResult ResultData = MySQLConnection.Query(InputSQL);
-    const std::string FormattedResult = FormatQueryResult(ResultData);
-    const std::string OutputText = GetCurrentTimestamp() + FormattedResult;
+    const auto Statements = SplitSQLStatements(InputSQL);
+    if (Statements.empty()) [[unlikely]]
+    {
+        const std::string OutputMessage = GetCurrentTimestamp() + "未检测到有效的 SQL 语句。";
+        AppendEditTextWithTimestamp(UIHandles::OutputEdit, OutputMessage);
+        return;
+    }
+    std::string OutputText = GetCurrentTimestamp();
+    if (Statements.size() > 1)
+        OutputText += std::format("执行 {} 条 SQL 语句:\r\n\r\n", Statements.size());
+    for (std::size_t Index = 0; Index < Statements.size(); ++Index)
+    {
+        const auto& Statement = Statements[Index];
+        if (Statements.size() > 1)
+            OutputText += std::format("--- 语句 {} ---\r\n", Index + 1);
+        const MySQLResult ResultData = MySQLConnection.Query(Statement);
+        const std::string FormattedResult = FormatQueryResult(ResultData);
+        OutputText += FormattedResult;
+        if (Statements.size() > 1 && Index < Statements.size() - 1)
+            OutputText += "\r\n";
+    }
     AppendEditTextWithTimestamp(UIHandles::OutputEdit, OutputText);
 }
 
@@ -136,6 +244,7 @@ auto HandleConnect(const char* HostPtr, const char* UserPtr, const char* Passwor
     std::ranges::copy_n(UserPtr, std::min<std::size_t>(255, strlen(UserPtr)), ConnectionConfig::User.begin());
     std::ranges::copy_n(PasswordPtr, std::min<std::size_t>(255, strlen(PasswordPtr)), ConnectionConfig::Password.begin());
     std::ranges::copy_n(DatabasePtr, std::min<std::size_t>(255, strlen(DatabasePtr)), ConnectionConfig::Database.begin());
+    ConnectionConfig::Database[std::min<std::size_t>(255, strlen(DatabasePtr))] = '\0';
     ConnectionConfig::Port = PortNumber;
     const MySQLConfig ConfigData
     {
@@ -154,6 +263,8 @@ auto HandleConnect(const char* HostPtr, const char* UserPtr, const char* Passwor
         OutputMessage += std::format("用户: {}\r\n", ConfigData.User);
         if (!std::string_view{ ConfigData.Database }.empty())
             OutputMessage += std::format("数据库: {}\r\n", ConfigData.Database);
+        else
+            OutputMessage += "数据库: (未指定)\r\n";
     }
     else
         OutputMessage += std::format("连接失败:\r\n{}\r\n", MySQLConnection.GetLastError());
@@ -219,7 +330,14 @@ auto HandleDisconnect() -> void
                 break;
             }
             case 1003: ClearEditText(UIHandles::OutputEdit); break;
-            case 1004: ShowConnectionDialog(WindowHandle, HandleConnect); break;
+            case 1004: 
+                ShowConnectionDialog(WindowHandle, HandleConnect,
+                    ConnectionConfig::Host.data(),
+                    ConnectionConfig::User.data(),
+                    ConnectionConfig::Password.data(),
+                    ConnectionConfig::Database.data(),
+                    ConnectionConfig::Port); 
+                break;
             case 1005: HandleDisconnect(); break;
             default: break;
             }
@@ -321,7 +439,7 @@ int APIENTRY wWinMain([[maybe_unused]] _In_ HINSTANCE InstanceHandle, [[maybe_un
         const int PositionX = (ScreenWidth - WindowWidth) / 2;
         const int PositionY = (ScreenHeight - WindowHeight) / 2;
         constexpr DWORD WindowStyle = WS_OVERLAPPEDWINDOW;
-        RenderState::WindowHandle = CreateWindowExW(0, WindowClass.lpszClassName, L"MySQL Local Client - Update 2025.12.14 by xiren xue", WindowStyle, PositionX, PositionY, WindowWidth, WindowHeight, nullptr, nullptr, InstanceHandle, nullptr);
+        RenderState::WindowHandle = CreateWindowExW(0, WindowClass.lpszClassName, L"MySQL Local Client - Update 2025.12.15 by xiren xue", WindowStyle, PositionX, PositionY, WindowWidth, WindowHeight, nullptr, nullptr, InstanceHandle, nullptr);
         if (!RenderState::WindowHandle) [[unlikely]]
         {
             MessageBoxW(nullptr, L"窗口创建失败", L"错误", MB_ICONERROR);

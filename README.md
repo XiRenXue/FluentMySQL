@@ -353,7 +353,7 @@ SOFTWARE.
 
 如有问题或建议，请通过以下方式联系：
 
-- 提交 Gitee Issue
+- 提交 GitHub Issue
 - 发送邮件至项目维护者
 
 ---
